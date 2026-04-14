@@ -1,5 +1,7 @@
 {
-  "projects": {},
+  "projects": {
+    "default": "krishna-e9c59"
+  },
   "targets": {},
   "etags": {}
 }

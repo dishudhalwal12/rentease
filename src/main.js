@@ -158,7 +158,20 @@ window.addEventListener("popstate", renderCurrentRoute);
 
 onAuthStateChanged(auth, async (user) => {
   state.user = user;
-  state.profile = user ? await ensureLandlordProfile(user) : null;
+  try {
+    state.profile = user ? await ensureLandlordProfile(user) : null;
+  } catch (error) {
+    console.error("Unable to load landlord profile", error);
+    state.profile = user
+      ? {
+          id: user.uid,
+          displayName: user.displayName || user.email?.split("@")[0] || "RentEase Landlord",
+          email: user.email || "",
+          reminderLeadDays: 4,
+          profileFallback: true,
+        }
+      : null;
+  }
   state.authReady = true;
   renderCurrentRoute();
 });

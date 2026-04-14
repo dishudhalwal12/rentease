@@ -25,13 +25,16 @@ import { auth, db, storage } from "./firebase/config.js";
 const GEMINI_MODEL = "gemini-2.5-flash";
 const GEMINI_KEY_STORAGE = "rentease.geminiApiKey";
 
-const AUTH_MESSAGES = {
+const FIREBASE_MESSAGES = {
   "auth/email-already-in-use": "An account with this email already exists.",
   "auth/invalid-credential": "The email or password is incorrect.",
   "auth/invalid-email": "Enter a valid email address.",
   "auth/missing-password": "Enter your password to continue.",
   "auth/too-many-requests": "Too many attempts. Please wait and try again.",
   "auth/weak-password": "Use a password with at least 6 characters.",
+  "permission-denied":
+    "Firebase rejected this request. Deploy the Firestore rules for this project, then try again.",
+  unavailable: "Firebase is temporarily unavailable. Please try again in a moment.",
 };
 
 function requireUser() {
@@ -42,8 +45,26 @@ function requireUser() {
   return user;
 }
 
-function mapAuthError(code) {
-  return AUTH_MESSAGES[code] || "Something went wrong while authenticating.";
+function mapFirebaseError(error) {
+  if (!error) {
+    return "Something went wrong while talking to Firebase.";
+  }
+
+  return (
+    FIREBASE_MESSAGES[error.code] ||
+    error.message ||
+    "Something went wrong while talking to Firebase."
+  );
+}
+
+function fallbackProfile(user) {
+  return {
+    id: user.uid,
+    displayName: user.displayName || user.email?.split("@")[0] || "RentEase Landlord",
+    email: user.email || "",
+    reminderLeadDays: 4,
+    profileFallback: true,
+  };
 }
 
 function mapDocs(snapshot) {
@@ -120,7 +141,7 @@ export async function registerLandlord({ displayName, email, password }) {
 
     return credential.user;
   } catch (error) {
-    throw new Error(mapAuthError(error.code));
+    throw new Error(mapFirebaseError(error));
   }
 }
 
@@ -129,7 +150,7 @@ export async function signInLandlord({ email, password }) {
     const credential = await signInWithEmailAndPassword(auth, email, password);
     return credential.user;
   } catch (error) {
-    throw new Error(mapAuthError(error.code));
+    throw new Error(mapFirebaseError(error));
   }
 }
 
@@ -142,38 +163,47 @@ export async function ensureLandlordProfile(user) {
     return null;
   }
 
-  const profileRef = doc(db, "landlords", user.uid);
-  const profileSnapshot = await getDoc(profileRef);
+  try {
+    const profileRef = doc(db, "landlords", user.uid);
+    const profileSnapshot = await getDoc(profileRef);
 
-  if (!profileSnapshot.exists()) {
-    await setDoc(
-      profileRef,
-      {
-        displayName: user.displayName || user.email?.split("@")[0] || "RentEase Landlord",
-        email: user.email || "",
-        reminderLeadDays: 4,
-        createdAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
+    if (!profileSnapshot.exists()) {
+      await setDoc(
+        profileRef,
+        {
+          displayName: user.displayName || user.email?.split("@")[0] || "RentEase Landlord",
+          email: user.email || "",
+          reminderLeadDays: 4,
+          createdAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
 
-    const createdSnapshot = await getDoc(profileRef);
+      const createdSnapshot = await getDoc(profileRef);
+      if (!createdSnapshot.exists()) {
+        return fallbackProfile(user);
+      }
+
+      return {
+        id: createdSnapshot.id,
+        ...createdSnapshot.data(),
+      };
+    }
+
+    const data = profileSnapshot.data();
+    if (typeof data.reminderLeadDays !== "number") {
+      await updateDoc(profileRef, { reminderLeadDays: 4 });
+    }
+
     return {
-      id: createdSnapshot.id,
-      ...createdSnapshot.data(),
+      id: profileSnapshot.id,
+      ...data,
+      reminderLeadDays: typeof data.reminderLeadDays === "number" ? data.reminderLeadDays : 4,
     };
+  } catch (error) {
+    console.error("Failed to sync landlord profile", error);
+    return fallbackProfile(user);
   }
-
-  const data = profileSnapshot.data();
-  if (typeof data.reminderLeadDays !== "number") {
-    await updateDoc(profileRef, { reminderLeadDays: 4 });
-  }
-
-  return {
-    id: profileSnapshot.id,
-    ...data,
-    reminderLeadDays: typeof data.reminderLeadDays === "number" ? data.reminderLeadDays : 4,
-  };
 }
 
 export async function updateLandlordSettings(payload) {
