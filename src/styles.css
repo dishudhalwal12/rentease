@@ -758,6 +758,23 @@ textarea {
   line-height: 0.95;
 }
 
+.detail-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 1rem 1.25rem;
+}
+
+.detail-hero > :first-child {
+  min-width: 0;
+}
+
+.detail-hero p:not(.eyebrow) {
+  margin: 0.7rem 0 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -786,7 +803,6 @@ textarea {
 }
 
 .dashboard-layout,
-.detail-hero,
 .payment-grid,
 .complaint-list,
 .tenant-list,
@@ -1225,6 +1241,11 @@ textarea {
 }
 
 @media (max-width: 840px) {
+  .detail-hero {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
   .landing-nav,
   .landing-links,
   .landing-actions,
